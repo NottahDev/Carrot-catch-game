@@ -32,7 +32,7 @@ loadSound("sfx_first_death", "sfx/first_death.mp3");
 loadSound("sfx_second_death", "sfx/second_death.mp3");
 loadSound("sfx_final_death", "sfx/final_death.mp3");
 loadSound("sfx_game_over", "sfx/game_over_sound.mp3");
-loadSound("sfx_yay_extra_life", "sfx/yay.mp3"); // <<<< NEW: Load "yay" sound effect
+loadSound("sfx_yay_extra_life", "sfx/yay.mp3");
 
 
 // --- Game Variables ---
@@ -113,41 +113,84 @@ scene("game", () => {
     for(let i=0;i<2;i++){add([sprite("bg_front"),pos(i*bgWidth,0),z(-1),fixed(),"scrolling_bg_front"]);}
     onUpdate("scrolling_bg_back",(bg)=>{bg.move(-BG_BACK_SPEED_EFFECTIVE,0);if(bg.pos.x<=-bgWidth){bg.pos.x+=bgWidth*2;}});
     onUpdate("scrolling_bg_front",(bg)=>{bg.move(-BG_FRONT_SPEED_EFFECTIVE,0);if(bg.pos.x<=-bgWidth){bg.pos.x+=bgWidth*2;}});
+
     const player=add([sprite(chosenBunnySpriteKey),pos(width()/2,height()-50),anchor("center"),area(),body({isStatic:true}),"player",{current_frame_movement:FRAME_IDLE}]);
     player.frame=FRAME_IDLE;
+
+    // Player Keyboard Movement & Animation Control (existing)
     onKeyDown("left",()=>{player.move(-PLAYER_SPEED,0);if(player.pos.x<player.width/2)player.pos.x=player.width/2;if(!isKeyDown("right")){player.current_frame_movement=FRAME_MOVE_LEFT;if(!isBunnyReacting)player.frame=player.current_frame_movement;player.flipX=true;}});
     onKeyDown("right",()=>{player.move(PLAYER_SPEED,0);if(player.pos.x>width()-player.width/2)player.pos.x=width()-player.width/2;if(!isKeyDown("left")){player.current_frame_movement=FRAME_MOVE_RIGHT;if(!isBunnyReacting)player.frame=player.current_frame_movement;player.flipX=false;}});
     onKeyRelease(["left","right"],()=>{if(isKeyDown("left")){player.current_frame_movement=FRAME_MOVE_LEFT;if(!isBunnyReacting)player.frame=player.current_frame_movement;player.flipX=true}else if(isKeyDown("right")){player.current_frame_movement=FRAME_MOVE_RIGHT;if(!isBunnyReacting)player.frame=player.current_frame_movement;player.flipX=false}else{player.current_frame_movement=FRAME_IDLE;if(!isBunnyReacting)player.frame=player.current_frame_movement;player.flipX=false}});
+
+    // --- TOUCH CONTROLS SETUP ---
+    const touchAreaWidth = width() / 2;
+    const touchAreaHeight = height();
+    const leftTouchArea = add([rect(touchAreaWidth,touchAreaHeight),pos(0,0),area(),opacity(0),fixed(),"touchLeft"]);
+    const rightTouchArea = add([rect(touchAreaWidth,touchAreaHeight),pos(touchAreaWidth,0),area(),opacity(0),fixed(),"touchRight"]);
+    
+    let touchingLeft = false;   // <<<< VARIABLE IS DECLARED HERE, WITHIN scene("game")
+    let touchingRight = false;  // <<<< VARIABLE IS DECLARED HERE, WITHIN scene("game")
+
+    leftTouchArea.onClick(()=>{ console.log("Left touch area CLICKED/TOUCHED"); touchingLeft=true;touchingRight=false;});
+    rightTouchArea.onClick(()=>{ console.log("Right touch area CLICKED/TOUCHED"); touchingRight=true;touchingLeft=false;});
+    onMouseRelease(()=>{ console.log("Mouse/Touch RELEASED"); touchingLeft=false;touchingRight=false;});
+    // --- END TOUCH CONTROLS SETUP ---
+
+    // --- onUpdate FOR TOUCH MOVEMENT AND IDLE STATE ---
+    // This onUpdate is now correctly scoped within scene("game")
     let isMovingByTouch = false;
-    onUpdate(()=>{isMovingByTouch=!1;const MOVE_AMOUNT=3;if(touchingLeft){player.pos.x-=MOVE_AMOUNT;if(player.pos.x<player.width/2)player.pos.x=player.width/2;if(!isBunnyReacting){player.current_frame_movement=FRAME_MOVE_LEFT;player.frame=FRAME_MOVE_LEFT}player.flipX=!0;isMovingByTouch=!0}else if(touchingRight){player.pos.x+=MOVE_AMOUNT;if(player.pos.x>width()-player.width/2)player.pos.x=width()-player.width/2;if(!isBunnyReacting){player.current_frame_movement=FRAME_MOVE_RIGHT;player.frame=FRAME_MOVE_RIGHT}player.flipX=!1;isMovingByTouch=!0}if(!isMovingByTouch&&!isKeyDown("left")&&!isKeyDown("right")){if(!isBunnyReacting){if(player.current_frame_movement!==FRAME_IDLE){player.current_frame_movement=FRAME_IDLE;player.frame=FRAME_IDLE;player.flipX=!1}}}});
 
-    loop(CARROT_SPAWN_RATE,()=>{if(rand()<EXTRA_LIFE_CHANCE){play("sfx_carrot_spawn",{volume:0.6,speed:1.2});add([sprite("heart"),pos(rand(0,width()),0-30),anchor("center"),scale(0.8),area(),move(DOWN,HEART_FALL_SPEED),offscreen({destroy:true,distance:30}),"extraLife",])}else{play("sfx_carrot_spawn",{volume:0.4});add([sprite("carrot"),pos(rand(0,width()),0-30),anchor("center"),area(),move(DOWN,currentCarrotSpeed),offscreen({destroy:true,distance:30}),"carrot",])}});
-    loop(GOBLIN_SPAWN_RATE,()=>{const s=chance(.5),t=rand(140,height()-50);add([sprite("goblin"),pos(s?0-30:width()+30,t),anchor("center"),area(),move(s?RIGHT:LEFT,currentGoblinSpeed),offscreen({destroy:true}),"goblin",{initialSpeed:s?currentGoblinSpeed:-currentGoblinSpeed}])});
-    player.onCollide("carrot",(c)=>{play("sfx_player_catch",{volume:0.6});destroy(c);score+=10;scoreText.text=`Score: ${score}`;carrotsCollectedForSpeedUp++;if(carrotsCollectedForSpeedUp>=CARROTS_PER_SPEED_UP){play("sfx_speed_up",{volume:0.7});currentCarrotSpeed*=SPEED_INCREASE_FACTOR;currentGoblinSpeed*=SPEED_INCREASE_FACTOR;console.log(`SPEED UP!`);carrotsCollectedForSpeedUp=0;}});
+    onUpdate(() => { // This onUpdate is specific to the game scene
+        isMovingByTouch = false;
+        const MOVE_AMOUNT = 3; // Using direct position manipulation for touch for now
 
-    // Player catches extra life heart
-    player.onCollide("extraLife", (lifeUp) => {
-        destroy(lifeUp);
-        if (lives < MAX_LIVES) {
-            lives++;
-            play("sfx_yay_extra_life", { volume: 0.8 }); // <<<< PLAY "YAY" SOUND
-            updateLifeHeartsUI();
-        } else {
-            score += 25;
-            scoreText.text = `Score: ${score}`;
-            play("sfx_player_catch", { volume: 0.5 }); // Regular catch sound for points if at max lives
+        if (touchingLeft) { // Will refer to the touchingLeft declared within scene("game")
+            player.pos.x -= MOVE_AMOUNT;
+            if (player.pos.x < player.width / 2) player.pos.x = player.width / 2;
+            if (!isBunnyReacting) {
+                player.current_frame_movement = FRAME_MOVE_LEFT;
+                player.frame = FRAME_MOVE_LEFT;
+            }
+            player.flipX = true;
+            isMovingByTouch = true;
+        } else if (touchingRight) { // Will refer to the touchingRight declared within scene("game")
+            player.pos.x += MOVE_AMOUNT;
+            if (player.pos.x > width() - player.width / 2) player.pos.x = width() - player.width / 2;
+            if (!isBunnyReacting) {
+                player.current_frame_movement = FRAME_MOVE_RIGHT;
+                player.frame = FRAME_MOVE_RIGHT;
+            }
+            player.flipX = false;
+            isMovingByTouch = true;
+        }
+
+        // Handle idle state ONLY if not moving by touch AND no keyboard keys are pressed
+        if (!isMovingByTouch && !isKeyDown("left") && !isKeyDown("right")) {
+            if (!isBunnyReacting) {
+                if (player.current_frame_movement !== FRAME_IDLE) {
+                     player.current_frame_movement = FRAME_IDLE;
+                     player.frame = FRAME_IDLE;
+                     player.flipX = false;
+                }
+            }
         }
     });
+    // --- END onUpdate ---
 
+    loop(CARROT_SPAWN_RATE,()=>{play("sfx_carrot_spawn",{volume:0.4});add([sprite("carrot"),pos(rand(0,width()),0-30),anchor("center"),area(),move(DOWN,currentCarrotSpeed),offscreen({destroy:true,distance:30}),"carrot",])});
+    loop(GOBLIN_SPAWN_RATE,()=>{const s=chance(.5),t=rand(140,height()-50);add([sprite("goblin"),pos(s?0-30:width()+30,t),anchor("center"),area(),move(s?RIGHT:LEFT,currentGoblinSpeed),offscreen({destroy:true}),"goblin",{initialSpeed:s?currentGoblinSpeed:-currentGoblinSpeed}])});
+    player.onCollide("carrot",(c)=>{play("sfx_player_catch",{volume:0.6});destroy(c);score+=10;scoreText.text=`Score: ${score}`;carrotsCollectedForSpeedUp++;if(carrotsCollectedForSpeedUp>=CARROTS_PER_SPEED_UP){play("sfx_speed_up",{volume:0.7});currentCarrotSpeed*=SPEED_INCREASE_FACTOR;currentGoblinSpeed*=SPEED_INCREASE_FACTOR;console.log(`SPEED UP!`);carrotsCollectedForSpeedUp=0;}});
     onCollide("goblin","carrot",(g,c)=>{const s=["sfx_goblin_steal_1","sfx_goblin_steal_2","sfx_goblin_steal_3"];play(choose(s),{volume:0.5});destroy(c);if(!isBunnyReacting){isBunnyReacting=!0;player.frame=FRAME_REACTION_SAD;wait(BUNNY_REACTION_TIME,()=>{isBunnyReacting=!1;player.frame=player.current_frame_movement})}if(!g.is("sprinting")){g.use("sprinting");g.use(lifespan(3,{fade:.1}));g.sprintDirection=g.initialSpeed>0?1:-1}});
     onUpdate("sprinting",(g)=>{const v=currentGoblinSpeed*GOBLIN_SPRINT_SPEED_MULTIPLIER;g.move(g.sprintDirection*v,0);});
     add([rect(width(),10),pos(0,height()-5),area(),body({isStatic:true}),"ground"]);
-    onCollide("carrot","ground",(c,g)=>{destroy(c);loseLife();});
-
-    function updateLifeHeartsUI(){lifeHeartsUI.forEach(h=>destroy(h));lifeHeartsUI=[];for(let i=0;i<MAX_LIVES;i++){const s=i<lives?"heart":"heart";if(i>=lives&&MAX_LIVES > lives && lives >= 0) continue; lifeHeartsUI.push(add([sprite(s),pos(width()-10-(i*30),10),anchor("topright"),scale(0.7),fixed(),z(10)]))}};
+    function updateLifeHeartsUI(){lifeHeartsUI.forEach(h=>destroy(h));lifeHeartsUI=[];for(let i=0;i<MAX_LIVES;i++){const s=i<lives?"heart":"heart";if(i>=lives&&MAX_LIVES>lives&&lives>=0)continue;lifeHeartsUI.push(add([sprite(s),pos(width()-10-(i*30),10),anchor("topright"),scale(0.7),fixed(),z(10)]))}};
     updateLifeHeartsUI();
     function loseLife(){if(lives>0){lives--;updateLifeHeartsUI();if(lives===MAX_LIVES-1&&MAX_LIVES>1){play("sfx_first_death",{volume:0.6})}else if(lives===MAX_LIVES-2&&MAX_LIVES>2){play("sfx_second_death",{volume:0.6})}else if(lives===0){play("sfx_final_death",{volume:0.7})}if(lives<=0){wait(.7,()=>{go("gameOver",{finalScore:score,playerName:playerUsername});})}}};
+    onCollide("carrot","ground",(c,g)=>{destroy(c);loseLife();}); // Call loseLife here
+    player.onCollide("extraLife",(l)=>{destroy(l);if(lives<MAX_LIVES){lives++;play("sfx_yay_extra_life",{volume:.8});updateLifeHeartsUI()}else{score+=25;scoreText.text=`Score: ${score}`;play("sfx_player_catch",{volume:.5})}});
     const scoreText=add([text(`Score: ${score}`,{size:24,font:"arial"}),pos(10,10),fixed(),z(10)]);
+    // livesText was removed earlier as we switched to heart sprites, ensuring it's not accidentally re-added.
+    // The updateLifeHeartsUI function handles the visual representation of lives.
 });
 
 scene("gameOver", ({ finalScore, playerName }) => {
