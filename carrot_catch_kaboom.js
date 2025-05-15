@@ -3,7 +3,6 @@ kaboom({
     width: 600,
     height: 400,
     font: "sans-serif",
-    // touchToMouse: false,
 });
 
 // --- Asset Loading ---
@@ -35,7 +34,7 @@ loadSound("sfx_game_over", "sfx/game_over_sound.mp3");
 
 
 // --- Game Variables ---
-const PLAYER_SPEED = 320;
+const PLAYER_SPEED = 320; // Still used for keyboard, less relevant for current touch test
 const BASE_CARROT_SPEED = 120;
 let currentCarrotSpeed = BASE_CARROT_SPEED;
 const BASE_GOBLIN_SPEED = 80;
@@ -80,7 +79,6 @@ function stopMusic(){if(musicPlayer&&typeof musicPlayer.stop==="function"){music
 
 
 // --- Game Scenes ---
-
 scene("start", () => {
     add([sprite("title_bg"), pos(0,0), z(-1)]);
     const startInteractions=()=>{startMusic();go("charSelect");};
@@ -127,20 +125,23 @@ scene("game", () => {
     let touchingLeft = false;
     let touchingRight = false;
 
-    leftTouchArea.onClick(()=>{touchingLeft=true;touchingRight=false;});
-    rightTouchArea.onClick(()=>{touchingRight=true;touchingLeft=false;});
-    onMouseRelease(()=>{touchingLeft=false;touchingRight=false;});
+    leftTouchArea.onClick(()=>{console.log("Left touch area CLICKED/TOUCHED");touchingLeft=true;touchingRight=false;}); // Added console log
+    rightTouchArea.onClick(()=>{console.log("Right touch area CLICKED/TOUCHED");touchingRight=true;touchingLeft=false;}); // Added console log
+    onMouseRelease(()=>{console.log("Mouse/Touch RELEASED");touchingLeft=false;touchingRight=false;}); // Added console log
     // --- END TOUCH CONTROLS SETUP ---
 
-
-    // --- >> REFINED onUpdate FOR TOUCH MOVEMENT AND IDLE STATE << ---
-    let isMovingByTouch = false; // Flag to help manage idle state with keyboard
+    // --- onUpdate FOR TOUCH MOVEMENT (TEST 1: DIRECT POSITION CHANGE) AND IDLE STATE ---
+    let isMovingByTouch = false;
 
     onUpdate(() => {
-        isMovingByTouch = false; // Reset each frame
+        isMovingByTouch = false;
+        const MOVE_AMOUNT = 3; // TEST: Fixed move amount per frame (was 2, trying 3 for more noticeable movement)
 
         if (touchingLeft) {
-            player.move(-PLAYER_SPEED * dt(), 0);
+            // console.log(">>> TOUCHING LEFT. dt:", dt()); // Optional log for dt if needed later
+            player.pos.x -= MOVE_AMOUNT; // <<<< TEST: Direct position change
+            // player.move(-PLAYER_SPEED * dt(), 0); // Original move call commented out
+
             if (player.pos.x < player.width / 2) player.pos.x = player.width / 2;
             if (!isBunnyReacting) {
                 player.current_frame_movement = FRAME_MOVE_LEFT;
@@ -149,7 +150,10 @@ scene("game", () => {
             player.flipX = true;
             isMovingByTouch = true;
         } else if (touchingRight) {
-            player.move(PLAYER_SPEED * dt(), 0);
+            // console.log(">>> TOUCHING RIGHT. dt:", dt()); // Optional log for dt if needed later
+            player.pos.x += MOVE_AMOUNT; // <<<< TEST: Direct position change
+            // player.move(PLAYER_SPEED * dt(), 0); // Original move call commented out
+
             if (player.pos.x > width() - player.width / 2) player.pos.x = width() - player.width / 2;
             if (!isBunnyReacting) {
                 player.current_frame_movement = FRAME_MOVE_RIGHT;
@@ -162,20 +166,19 @@ scene("game", () => {
         // Handle idle state ONLY if not moving by touch AND no keyboard keys are pressed
         if (!isMovingByTouch && !isKeyDown("left") && !isKeyDown("right")) {
             if (!isBunnyReacting) {
-                if (player.current_frame_movement !== FRAME_IDLE) { // Avoid redundant frame sets
+                if (player.current_frame_movement !== FRAME_IDLE) {
                      player.current_frame_movement = FRAME_IDLE;
                      player.frame = FRAME_IDLE;
-                     player.flipX = false; // Assuming idle faces right or is symmetrical
+                     player.flipX = false;
                 }
             }
         }
     });
-    // --- >> END REFINED onUpdate << ---
-
+    // --- END onUpdate ---
 
     loop(CARROT_SPAWN_RATE,()=>{play("sfx_carrot_spawn",{volume:0.4});add([sprite("carrot"),pos(rand(0,width()),0-30),anchor("center"),area(),move(DOWN,currentCarrotSpeed),offscreen({destroy:true,distance:30}),"carrot",])});
     loop(GOBLIN_SPAWN_RATE,()=>{const s=chance(.5),t=rand(140,height()-50);add([sprite("goblin"),pos(s?0-30:width()+30,t),anchor("center"),area(),move(s?RIGHT:LEFT,currentGoblinSpeed),offscreen({destroy:true}),"goblin",{initialSpeed:s?currentGoblinSpeed:-currentGoblinSpeed}])});
-    player.onCollide("carrot",(c)=>{play("sfx_player_catch",{volume:0.6});destroy(c);score+=10;scoreText.text=`Score: ${score}`;carrotsCollectedForSpeedUp++;if(carrotsCollectedForSpeedUp>=CARROTS_PER_SPEED_UP){play("sfx_speed_up",{volume:0.7});currentCarrotSpeed*=SPEED_INCREASE_FACTOR;currentGoblinSpeed*=SPEED_INCREASE_FACTOR;console.log(`SPEED UP!`);carrotsCollectedForSpeedUp=0;}});
+    player.onCollide("carrot",(c)=>{play("sfx_player_catch",{volume:0.6});destroy(c);score+=10;scoreText.text=`Score: ${score}`;carrotsCollectedForSpeedUp++;if(carrotsCollectedForSpeedUp>=CARROTS_PER_SPEED_UP){play("sfx_speed_up",{volume:0.7});currentCarROT_SPEED*=SPEED_INCREASE_FACTOR;currentGoblinSpeed*=SPEED_INCREASE_FACTOR;console.log(`SPEED UP!`);carrotsCollectedForSpeedUp=0;}});
     onCollide("goblin","carrot",(g,c)=>{const s=["sfx_goblin_steal_1","sfx_goblin_steal_2","sfx_goblin_steal_3"];play(choose(s),{volume:0.5});destroy(c);if(!isBunnyReacting){isBunnyReacting=!0;player.frame=FRAME_REACTION_SAD;wait(BUNNY_REACTION_TIME,()=>{isBunnyReacting=!1;player.frame=player.current_frame_movement})}if(!g.is("sprinting")){g.use("sprinting");g.use(lifespan(3,{fade:.1}));g.sprintDirection=g.initialSpeed>0?1:-1}});
     onUpdate("sprinting",(g)=>{const v=currentGoblinSpeed*GOBLIN_SPRINT_SPEED_MULTIPLIER;g.move(g.sprintDirection*v,0);});
     add([rect(width(),10),pos(0,height()-5),area(),body({isStatic:true}),"ground"]);
