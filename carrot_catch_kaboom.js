@@ -3,6 +3,9 @@ kaboom({
     width: 600,
     height: 400,
     font: "sans-serif",
+    // touchToMouse: false, // Optional: Set to false if you want to handle mouse and touch separately.
+                           // Default is true, meaning touch events also simulate mouse events.
+                           // For simple tap areas, the default is usually fine.
 });
 
 // --- Asset Loading ---
@@ -74,42 +77,20 @@ let musicPlayer = null;
 
 function getHighScores(){const s=localStorage.getItem(HIGH_SCORE_KEY);return s?JSON.parse(s):[]}
 function addHighScore(n,s){const o=getHighScores();o.push({name:n,score:s}),o.sort((a,b)=>b.score-a.score);const t=o.slice(0,MAX_HIGH_SCORES);localStorage.setItem(HIGH_SCORE_KEY,JSON.stringify(t));return t}
-
-// <<<< MODIFIED MUSIC MANAGEMENT FUNCTIONS >>>>
-function startMusic() {
-    if (!musicPlayer || (musicPlayer && musicPlayer.paused)) {
-        if (musicPlayer && typeof musicPlayer.stop === 'function') {
-            musicPlayer.stop(); // Stop any previous instance just in case
-        }
-        musicPlayer = play("bg_music", {
-            loop: true,
-            volume: 0.5,
-        });
-    }
-}
-
-function stopMusic() {
-    if (musicPlayer && typeof musicPlayer.stop === 'function') {
-        musicPlayer.stop();
-        // musicPlayer = null; // Optional: clear the reference if you always want a fresh play()
-                           // For now, leaving it so .paused state can be checked
-    }
-}
+function startMusic(){if(!musicPlayer||(musicPlayer&&musicPlayer.paused)){if(musicPlayer&&typeof musicPlayer.stop==="function"){musicPlayer.stop()}musicPlayer=play("bg_music",{loop:true,volume:0.5,})}}
+function stopMusic(){if(musicPlayer&&typeof musicPlayer.stop==="function"){musicPlayer.stop()}}
 
 
 // --- Game Scenes ---
 
 scene("start", () => {
     add([sprite("title_bg"), pos(0,0), z(-1)]);
-    const startInteractions = () => {
-        startMusic(); // <<<< Call startMusic
-        go("charSelect");
-    };
+    const startInteractions=()=>{startMusic();go("charSelect");};
     onClick(startInteractions);onKeyPress("enter",startInteractions);
 });
 
 scene("charSelect", () => {
-    startMusic(); // <<<< Call startMusic (ensures it's playing if navigated here)
+    startMusic();
     add([sprite("bg_back"),pos(0,0),z(-1)]);add([text("Choose Your Bunny!",{size:36,font:"arial"}),pos(width()/2,50),anchor("center")]);
     const bunnyDisplay=add([sprite(bunnyOptions[selectedBunnyIndex].spriteKey,{frame:FRAME_IDLE}),pos(width()/2,height()/2-40),scale(3),anchor("center")]);
     const bunnyNameText=add([text(bunnyOptions[selectedBunnyIndex].colorText,{size:24,font:"arial"}),pos(width()/2,height()/2+60),anchor("center")]);
@@ -121,7 +102,7 @@ scene("charSelect", () => {
 });
 
 scene("game", () => {
-    startMusic(); // <<<< Call startMusic
+    startMusic();
     score = 0; lives = MAX_LIVES; isBunnyReacting = false;
     currentCarrotSpeed = BASE_CARROT_SPEED; currentGoblinSpeed = BASE_GOBLIN_SPEED;
     carrotsCollectedForSpeedUp = 0;
@@ -131,32 +112,110 @@ scene("game", () => {
     for(let i=0;i<2;i++){add([sprite("bg_front"),pos(i*bgWidth,0),z(-1),fixed(),"scrolling_bg_front"]);}
     onUpdate("scrolling_bg_back",(bg)=>{bg.move(-BG_BACK_SPEED_EFFECTIVE,0);if(bg.pos.x<=-bgWidth){bg.pos.x+=bgWidth*2;}});
     onUpdate("scrolling_bg_front",(bg)=>{bg.move(-BG_FRONT_SPEED_EFFECTIVE,0);if(bg.pos.x<=-bgWidth){bg.pos.x+=bgWidth*2;}});
+
     const player=add([sprite(chosenBunnySpriteKey),pos(width()/2,height()-50),anchor("center"),area(),body({isStatic:true}),"player",{current_frame_movement:FRAME_IDLE}]);
     player.frame=FRAME_IDLE;
+
+    // Player Keyboard Movement & Animation Control (existing)
     onKeyDown("left",()=>{player.move(-PLAYER_SPEED,0);if(player.pos.x<player.width/2)player.pos.x=player.width/2;if(!isKeyDown("right")){player.current_frame_movement=FRAME_MOVE_LEFT;if(!isBunnyReacting)player.frame=player.current_frame_movement;player.flipX=true;}});
     onKeyDown("right",()=>{player.move(PLAYER_SPEED,0);if(player.pos.x>width()-player.width/2)player.pos.x=width()-player.width/2;if(!isKeyDown("left")){player.current_frame_movement=FRAME_MOVE_RIGHT;if(!isBunnyReacting)player.frame=player.current_frame_movement;player.flipX=false;}});
     onKeyRelease(["left","right"],()=>{if(isKeyDown("left")){player.current_frame_movement=FRAME_MOVE_LEFT;if(!isBunnyReacting)player.frame=player.current_frame_movement;player.flipX=true}else if(isKeyDown("right")){player.current_frame_movement=FRAME_MOVE_RIGHT;if(!isBunnyReacting)player.frame=player.current_frame_movement;player.flipX=false}else{player.current_frame_movement=FRAME_IDLE;if(!isBunnyReacting)player.frame=player.current_frame_movement;player.flipX=false}});
+
+    // --- >> ADD TOUCH CONTROLS << ---
+    const touchAreaWidth = width() / 2; // Each touch area takes half the screen width
+    const touchAreaHeight = height();   // Full screen height for touch
+
+    // Invisible Left Touch Area
+    const leftTouchArea = add([
+        rect(touchAreaWidth, touchAreaHeight), // Invisible rectangle
+        pos(0, 0),                             // Top-left corner
+        area(),                                // Make it respond to clicks/touches
+        opacity(0),                            // Make it invisible (0 = fully transparent)
+        fixed(),                               // Stays in place if camera moved
+        "touchLeft"
+    ]);
+
+    // Invisible Right Touch Area
+    const rightTouchArea = add([
+        rect(touchAreaWidth, touchAreaHeight),
+        pos(touchAreaWidth, 0),                // Starts where the left area ends
+        area(),
+        opacity(0),
+        fixed(),
+        "touchRight"
+    ]);
+
+    // Variables to track if touch is active on an area
+    let touchingLeft = false;
+    let touchingRight = false;
+
+    // Handle touch start (or mousedown if touchToMouse is true)
+    leftTouchArea.onClick(() => { // onClick also handles touchstart by default
+        touchingLeft = true;
+        touchingRight = false; // Ensure only one direction at a time if tapped quickly
+    });
+    rightTouchArea.onClick(() => {
+        touchingRight = true;
+        touchingLeft = false;
+    });
+
+    // Handle touch end (or mouseup) - Kaboom doesn't have a direct onRelease for generic objects easily,
+    // so we listen globally for mouse/touch release.
+    onMouseRelease(() => { // This also catches touchend due to touchToMouse default
+        touchingLeft = false;
+        touchingRight = false;
+    });
+    // More specific touchend handling if needed (requires touchToMouse: false and separate touch handlers)
+    // onTouchEnd((id, pos) => {
+    //     // Check if the touchend occurred within the bounds of our areas if more precision is needed
+    //     touchingLeft = false;
+    //     touchingRight = false;
+    // });
+
+
+    // Update player based on touch state in the main game loop (onUpdate)
+    onUpdate(() => { // This onUpdate is global, runs every frame
+        if (touchingLeft) {
+            player.move(-PLAYER_SPEED * dt(), 0); // Multiply by dt() for frame-rate independent movement
+            if (player.pos.x < player.width / 2) player.pos.x = player.width / 2;
+            player.current_frame_movement = FRAME_MOVE_LEFT;
+            if (!isBunnyReacting) player.frame = player.current_frame_movement;
+            player.flipX = true;
+        } else if (touchingRight) {
+            player.move(PLAYER_SPEED * dt(), 0);
+            if (player.pos.x > width() - player.width / 2) player.pos.x = width() - player.width / 2;
+            player.current_frame_movement = FRAME_MOVE_RIGHT;
+            if (!isBunnyReacting) player.frame = player.current_frame_movement;
+            player.flipX = false;
+        } else {
+            // If neither touch area is active, and no keyboard keys are pressed, go to idle
+            // This logic needs to be combined with keyboard key release for idle state
+            if (!isKeyDown("left") && !isKeyDown("right")) {
+                 player.current_frame_movement = FRAME_IDLE;
+                 if (!isBunnyReacting) player.frame = player.current_frame_movement;
+                 // player.flipX = false; // Assuming idle faces right or is symmetrical
+            }
+        }
+    });
+    // --- >> END TOUCH CONTROLS << ---
+
+
     loop(CARROT_SPAWN_RATE,()=>{play("sfx_carrot_spawn",{volume:0.4});add([sprite("carrot"),pos(rand(0,width()),0-30),anchor("center"),area(),move(DOWN,currentCarrotSpeed),offscreen({destroy:true,distance:30}),"carrot",])});
     loop(GOBLIN_SPAWN_RATE,()=>{const s=chance(.5),t=rand(140,height()-50);add([sprite("goblin"),pos(s?0-30:width()+30,t),anchor("center"),area(),move(s?RIGHT:LEFT,currentGoblinSpeed),offscreen({destroy:true}),"goblin",{initialSpeed:s?currentGoblinSpeed:-currentGoblinSpeed}])});
     player.onCollide("carrot",(c)=>{play("sfx_player_catch",{volume:0.6});destroy(c);score+=10;scoreText.text=`Score: ${score}`;carrotsCollectedForSpeedUp++;if(carrotsCollectedForSpeedUp>=CARROTS_PER_SPEED_UP){play("sfx_speed_up",{volume:0.7});currentCarrotSpeed*=SPEED_INCREASE_FACTOR;currentGoblinSpeed*=SPEED_INCREASE_FACTOR;console.log(`SPEED UP!`);carrotsCollectedForSpeedUp=0;}});
     onCollide("goblin","carrot",(g,c)=>{const s=["sfx_goblin_steal_1","sfx_goblin_steal_2","sfx_goblin_steal_3"];play(choose(s),{volume:0.5});destroy(c);if(!isBunnyReacting){isBunnyReacting=!0;player.frame=FRAME_REACTION_SAD;wait(BUNNY_REACTION_TIME,()=>{isBunnyReacting=!1;player.frame=player.current_frame_movement})}if(!g.is("sprinting")){g.use("sprinting");g.use(lifespan(3,{fade:.1}));g.sprintDirection=g.initialSpeed>0?1:-1}});
     onUpdate("sprinting",(g)=>{const v=currentGoblinSpeed*GOBLIN_SPRINT_SPEED_MULTIPLIER;g.move(g.sprintDirection*v,0);});
     add([rect(width(),10),pos(0,height()-5),area(),body({isStatic:true}),"ground"]);
-    onCollide("carrot","ground",(c,g)=>{destroy(c);if(lives>0){lives--;livesText.text=`Lives: ${lives}`;if(lives===MAX_LIVES-1){play("sfx_first_death",{volume:0.6})}else if(lives===MAX_LIVES-2){play("sfx_second_death",{volume:0.7})}else if(lives===0){play("sfx_final_death",{volume:0.9})}if(lives<=0){wait(.7,()=>{/* sfx_game_over already played by final_death or plays on transition */ go("gameOver",{finalScore:score,playerName:playerUsername});})}}});
+    onCollide("carrot","ground",(c,g)=>{destroy(c);if(lives>0){lives--;livesText.text=`Lives: ${lives}`;if(lives===MAX_LIVES-1){play("sfx_first_death",{volume:0.6})}else if(lives===MAX_LIVES-2){play("sfx_second_death",{volume:0.6})}else if(lives===0){play("sfx_final_death",{volume:0.7})}if(lives<=0){wait(.7,()=>{go("gameOver",{finalScore:score,playerName:playerUsername});})}}});
     const scoreText=add([text(`Score: ${score}`,{size:24,font:"arial"}),pos(10,10),fixed(),]);const livesText=add([text(`Lives: ${lives}`,{size:24,font:"arial"}),pos(width()-10,10),anchor("topright"),fixed(),]);
 });
 
 scene("gameOver", ({ finalScore, playerName }) => {
-    stopMusic(); // <<<< STOP BACKGROUND MUSIC
-    play("sfx_game_over", { volume: 0.7 }); // <<<< PLAY GAME OVER SFX
-
+    stopMusic(); play("sfx_game_over",{volume:0.7});
     add([sprite("game_over_bg"),pos(0,0),z(-1)]);
     const earnedCurrency=Math.max(0,Math.floor(finalScore/10));let currentCoins=parseInt(localStorage.getItem("carrotCoins"))||0;currentCoins+=earnedCurrency;localStorage.setItem("carrotCoins",currentCoins);addHighScore(playerName,finalScore);const o=getHighScores();add([text(`Game Over, ${playerName}!\nScore: ${finalScore}\nEarned: ${earnedCurrency} coins`,{size:28,align:"center",font:"arial"}),pos(width()/2,60),anchor("center")]);add([text("High Scores:",{size:22,font:"arial"}),pos(width()/2,140),anchor("center")]);let a=170;o.forEach((n,r)=>{add([text(`${r+1}. ${n.name} - ${n.score}`,{size:18,font:"arial"}),pos(width()/2,a),anchor("center")]);a+=25});
-    add([text("Play Again",{size:20,font:"arial"}),pos(width()/2,height()-90),anchor("center"),area(),"playAgainCurrentBtn"]);
-    onClick("playAgainCurrentBtn",()=>{ startMusic(); go("game");}); // <<<< Restart music
-    onKeyPress("enter",()=>{ startMusic(); go("game");}); // <<<< Restart music
-    add([text("Change Bunny / Name",{size:20,font:"arial"}),pos(width()/2,height()-50),anchor("center"),area(),"changeCharBtn"]);
-    onClick("changeCharBtn",()=>{ startMusic(); go("charSelect");}); // <<<< Restart music
+    add([text("Play Again",{size:20,font:"arial"}),pos(width()/2,height()-90),anchor("center"),area(),"playAgainCurrentBtn"]);onClick("playAgainCurrentBtn",()=>{startMusic();go("game");});onKeyPress("enter",()=>{startMusic();go("game");});
+    add([text("Change Bunny / Name",{size:20,font:"arial"}),pos(width()/2,height()-50),anchor("center"),area(),"changeCharBtn"]);onClick("changeCharBtn",()=>{startMusic();go("charSelect");});
 });
 
 go("start");
