@@ -58,8 +58,8 @@ let isBunnyReacting = false;
 let carrotsCollectedForSpeedUp = 0;
 const CARROTS_PER_SPEED_UP = 10;
 const SPEED_INCREASE_FACTOR = 1.5;
-const EXTRA_LIFE_CHANCE = 0.01;
-const HEART_FALL_SPEED = 100;
+const EXTRA_LIFE_CHANCE = 0.05;
+const HEART_FALL_SPEED = 150;
 
 const bunnyOptions = [
     { name: "Original", spriteKey: "bunny_original", colorText: "Classic Bun" },
